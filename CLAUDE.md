@@ -4,25 +4,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-This repository contains custom Chili Piper booking handler scripts for marketing automation form integrations. These scripts are deployed via Google Tag Manager to trigger Chili Piper's meeting scheduler after form submissions.
+Custom Chili Piper booking handler scripts for HubSpot, Marketo, and HTML form integrations. Deployed via Google Tag Manager to trigger Chili Piper's meeting scheduler after form submissions.
 
 ## Architecture
 
-Two standalone HTML/JavaScript snippets handle form submission events:
+Three standalone HTML/JavaScript snippets:
 
-- **HubSpot-ChilipiperBooker.html**: Listens for HubSpot `hsFormCallback` window messages with `onFormSubmit` events, extracts lead data from form fields, and conditionally submits to Chili Piper based on field values.
+- **HubSpot-ChilipiperBooker.html**: Supports both HubSpot Forms v4 (native `hs-form-event:on-submission:success` events) and v3 legacy (`postMessage` callbacks).
 
-- **Marketo-ChilipiperBooker.html**: Uses Marketo's `MktoForms2.whenReady()` API to hook into form success events and submit to Chili Piper.
+- **Marketo-ChilipiperBooker.html**: Uses Marketo's `MktoForms2.whenReady()` API to hook into form success events. Includes fallback initialization if the Marketo library loads after the script.
 
-Both scripts:
-1. Load Chili Piper's marketing.js library
-2. Configure tenant domain (`cpTenantDomain`) and router name (`cpRouterName`)
-3. Call `ChiliPiper.submit()` with form data mapping
-4. Push GTM dataLayer events for booking success/failure tracking
+- **HTML-ChilipiperBooker.html**: Uses event delegation on the `submit` event to capture standard HTML form submissions. Targets forms via configurable CSS selector (`formSelector`).
 
-## Configuration
+All scripts call `ChiliPiper.submit()` with `trigger: 'ThirdPartyForm'` and optionally push GTM dataLayer events.
 
-When customizing these scripts for a client:
-- Replace `cpTenantDomain` with the client's Chili Piper subdomain
-- Replace `cpRouterName` with the specific inbound router name
-- For HubSpot: modify the conditional check (`lead.field_name == "Value"`) to target specific forms
+## Code Structure
+
+Each script is divided into two sections:
+
+1. **Configuration section** (top): All user-modifiable settings including `cpTenantDomain`, `cpRouterName`, GTM event settings, and `shouldSubmitForm()` filter function.
+
+2. **Implementation section** (below "DO NOT MODIFY BELOW THIS LINE"): Core logic that should not be edited.
+
+When making changes:
+- Add new configuration options above the divider line
+- Keep implementation logic below the divider line
+- Maintain consistency between all scripts where possible

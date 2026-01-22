@@ -1,44 +1,99 @@
 //This code is intended to be deployed through Google Tag Manager to pick up on Form Submissions across your site.
+//Supports both HubSpot Forms v3 (legacy) and v4.
 
 <script src="https://js.chilipiper.com/marketing.js" type="text/javascript"></script>
 
 <script>
 
-var cpTenantDomain = "CPDomain"; // replace with your subdomain
-var cpRouterName = "CPRouter"; // replace with the router's name
+/******************************************************************************
+ * CONFIGURATION - Modify the settings below to match your environment
+ ******************************************************************************/
 
-// Listen for a HubSpot form submission event.
+var cpTenantDomain = "CPDomain"; // Your Chili Piper subdomain
+var cpRouterName = "CPRouter";   // Your Chili Piper router name
+
+// Set to true to push events to Google Tag Manager dataLayer
+var enableGTMEvents = true;
+
+// GTM dataLayer event names (customize if needed)
+var gtmEvents = {
+    onSuccess: 'chilipiper.booking.success',  // Fires after successful booking
+    onRouted: 'chilipiper.routed',            // Fires when routing attempt is made
+    onClose: 'chilipiper.booking.failed',     // Fires when user closes without booking
+    onError: 'chilipiper.booking.error'       // Fires when lead doesn't match queue rules
+};
+
+// Optional: Filter which forms trigger Chili Piper
+// Return true to submit to Chili Piper, false to skip
+// Parameters: lead (object with form field values), formId (HubSpot form GUID, v4 only)
+function shouldSubmitForm(lead, formId) {
+    // Examples:
+    // Only trigger for specific form: return formId === "abc123-def456-...";
+    // Only trigger if email contains company domain: return lead.email && !lead.email.includes("@yourcompany.com");
+    // Only trigger for demo requests: return lead.form_type === "demo_request";
+    return true; // Default: submit all forms
+}
+
+/******************************************************************************
+ * DO NOT MODIFY BELOW THIS LINE
+ ******************************************************************************/
+
+function pushGTMEvent(eventName) {
+    if (enableGTMEvents && typeof dataLayer !== 'undefined') {
+        dataLayer.push({'event': eventName});
+    }
+}
+
+function submitToChiliPiper(lead, formId) {
+    if (!shouldSubmitForm(lead, formId)) return;
+
+    if (typeof ChiliPiper === 'undefined') {
+        console.warn('ChiliPiper not loaded');
+        return;
+    }
+
+    ChiliPiper.submit(cpTenantDomain, cpRouterName, {
+        trigger: 'ThirdPartyForm',
+        lead: lead,
+        onSuccess: function() { pushGTMEvent(gtmEvents.onSuccess); },
+        onRouted: function() { pushGTMEvent(gtmEvents.onRouted); },
+        onClose: function() { pushGTMEvent(gtmEvents.onClose); },
+        onError: function() { pushGTMEvent(gtmEvents.onError); }
+    });
+}
+
+// HubSpot Forms v4 - Listen for submission success event
+// Docs: https://developers.hubspot.com/docs/api-reference/global-form-events/guide
+window.addEventListener("hs-form-event:on-submission:success", function(event) {
+    if (typeof HubSpotFormsV4 !== 'object') return;
+
+    var formId = event.detail.formId;
+    var form = HubSpotFormsV4.getFormFromEvent(event);
+    if (!form) return;
+
+    form.getFormFieldValues().then(function(values) {
+        submitToChiliPiper(values, formId);
+    });
+});
+
+// HubSpot Forms v3 (legacy) - Listen for postMessage callback
 window.addEventListener("message", function (event) {
-    if (
-        event.data.type === "hsFormCallback" 
-        && event.data.eventName === "onFormSubmit" 
-        && event.origin === document.location.origin
-        ) {
-            var lead = {}; 
-            
-            //Generate a list of keys from the form submission event using form field labels
-            for (var key in event.data.data) {
-                lead[event.data.data[key].name] = event.data.data[key].value;
-            }
-            
-            //Map data from the form submission event to the list of form field labels
-            if(Object.keys(lead).length <= 1){lead = event.data.data;}
+    if (!event.data || event.data.type !== "hsFormCallback" || event.data.eventName !== "onFormSubmit") return;
 
-            if(lead.field_name == "Value") {
-                ChiliPiper.submit(
-                    cpTenantDomain, 
-                    cpRouterName,
-                    
-                    // Map values from the form submission to the Chili Piper form
-                    {map: true, lead: lead},
+    var lead = {};
+    var formId = event.data.id || null;
 
-                    //Optional: Google Tag Manager Data Layer Events for Chili Piper tracking.
-                    { onSuccess: dataLayer.push({'event': 'chilipiper.booking.success'}) },
-                    { onRouted: dataLayer.push({'event': 'chilipiper.routed'}) },
-                    { onClose: dataLayer.push({'event': 'chilipiper.booking.failed'}) },
-                    { onError: dataLayer.push({'event': 'chilipiper.booking.error'}) }
-                );
+    if (event.data.data && Array.isArray(event.data.data)) {
+        for (var i = 0; i < event.data.data.length; i++) {
+            var field = event.data.data[i];
+            if (field.name) {
+                lead[field.name] = field.value;
             }
         }
+    }
+
+    if (Object.keys(lead).length === 0) { lead = event.data.data; }
+
+    submitToChiliPiper(lead, formId);
 });
 </script>

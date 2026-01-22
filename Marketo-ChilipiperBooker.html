@@ -7,30 +7,81 @@
 
 <script>
 
-// Find your domain and router name using the instructions here: 
-// https://help.chilipiper.com/hc/en-us/articles/360053799533-Common-Help-Questions#h_01H6XYK2M5G41FRRC8DK682F2K
+/******************************************************************************
+ * CONFIGURATION - Modify the settings below to match your environment
+ ******************************************************************************/
 
-var cpTenantDomain = "CPDomain"; // replace with your subdomain
-var cpRouterName = "CPRouter"; // replace with the router's name, retrieve this value from the 'Inbound Routers area'
+var cpTenantDomain = "CPDomain"; // Your Chili Piper subdomain
+var cpRouterName = "CPRouter";   // Your Chili Piper router name
 
-// When a Marketo form is successfully submitted, run the Chili Piper booker.
-MktoForms2.whenReady(function (form) {
-    form.onSuccess(function(values){
-        ChiliPiper.submit(
-            cpTenantDomain, 
-            cpRouterName,
+// Set to true to push events to Google Tag Manager dataLayer
+var enableGTMEvents = true;
 
-            // Map values from the form submission to the Chili Piper form
-            { map: true },
+// GTM dataLayer event names (customize if needed)
+var gtmEvents = {
+    onSuccess: 'chilipiper.booking.success',  // Fires after successful booking
+    onRouted: 'chilipiper.routed',            // Fires when routing attempt is made
+    onClose: 'chilipiper.booking.failed',     // Fires when user closes without booking
+    onError: 'chilipiper.booking.error'       // Fires when lead doesn't match queue rules
+};
 
-            //Optional: Google Tag Manager Data Layer Events for Chili Piper tracking.
-            { onSuccess: dataLayer.push({'event': 'chilipiper.booking.success'}) },
-            { onRouted: dataLayer.push({'event': 'chilipiper.routed'}) },
-            { onClose: dataLayer.push({'event': 'chilipiper.booking.failed'}) },
-            { onError: dataLayer.push({'event': 'chilipiper.booking.error'}) },
-            
-        );
+// Optional: Filter which forms trigger Chili Piper
+// Return true to submit to Chili Piper, false to skip
+// Parameters: values (object with form field values), formId (Marketo form ID)
+function shouldSubmitForm(values, formId) {
+    // Examples:
+    // Only trigger for specific form: return formId === 1234;
+    // Only trigger if email contains company domain: return values.Email && !values.Email.includes("@yourcompany.com");
+    // Only trigger for demo requests: return values.Form_Type === "demo_request";
+    return true; // Default: submit all forms
+}
+
+/******************************************************************************
+ * DO NOT MODIFY BELOW THIS LINE
+ ******************************************************************************/
+
+function pushGTMEvent(eventName) {
+    if (enableGTMEvents && typeof dataLayer !== 'undefined') {
+        dataLayer.push({'event': eventName});
+    }
+}
+
+function handleMarketoForm(form) {
+    form.onSuccess(function(values) {
+        var formId = form.getId();
+
+        if (!shouldSubmitForm(values, formId)) return false;
+
+        if (typeof ChiliPiper === 'undefined') {
+            console.warn('ChiliPiper not loaded');
+            return false;
+        }
+
+        ChiliPiper.submit(cpTenantDomain, cpRouterName, {
+            trigger: 'ThirdPartyForm',
+            lead: values,
+            onSuccess: function() { pushGTMEvent(gtmEvents.onSuccess); },
+            onRouted: function() { pushGTMEvent(gtmEvents.onRouted); },
+            onClose: function() { pushGTMEvent(gtmEvents.onClose); },
+            onError: function() { pushGTMEvent(gtmEvents.onError); }
+        });
         return false;
     });
-});
+}
+
+function initChiliPiperMarketo() {
+    if (initChiliPiperMarketo.done) return;
+
+    if (typeof MktoForms2 !== 'object') {
+        document.addEventListener('load', initChiliPiperMarketo, true);
+        return;
+    }
+
+    document.removeEventListener('load', initChiliPiperMarketo, true);
+    initChiliPiperMarketo.done = true;
+
+    MktoForms2.whenReady(handleMarketoForm);
+}
+
+initChiliPiperMarketo();
 </script>
